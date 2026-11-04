@@ -5,7 +5,7 @@ const vm = require('node:vm');
 const path = require('node:path');
 const root = path.join(__dirname, '..');
 
-test('config exposes public keys, rejects privileged keys, and handles missing settings', () => {
+test('config uses public defaults, supports env overrides, and rejects privileged or incomplete settings', () => {
   const source = fs.readFileSync(path.join(root, 'api/config.js'), 'utf8');
   function request(env, method = 'GET') {
     const context = { module: { exports: {} }, process: { env }, Buffer, URL };
@@ -14,11 +14,18 @@ test('config exposes public keys, rejects privileged keys, and handles missing s
     context.module.exports({ method }, res);
     return res;
   }
-  assert.equal(request({}).code, 503);
+  const defaults = request({});
+  assert.equal(defaults.code, 200);
+  assert.equal(defaults.body.supabaseUrl, 'https://mdchapdbwekbeocgzeob.supabase.co');
+  assert.ok(defaults.body.supabaseKey.startsWith('sb_publishable_'));
+  assert.equal(request({ SUPABASE_URL: 'https://other.supabase.co' }).code, 503);
+  assert.equal(request({ SUPABASE_ANON_KEY: 'sb_publishable_other' }).code, 503);
   assert.equal(request({}, 'POST').code, 405);
   const env = { SUPABASE_URL: 'https://example.supabase.co', SUPABASE_ANON_KEY: 'sb_publishable_test', SUPABASE_SERVICE_ROLE_KEY: 'private-value' };
   const result = request(env);
   assert.equal(result.code, 200);
+  assert.equal(result.body.supabaseUrl, env.SUPABASE_URL);
+  assert.equal(result.body.supabaseKey, env.SUPABASE_ANON_KEY);
   assert.equal(result.headers['Cache-Control'], 'no-store');
   assert.equal(JSON.stringify(result.body).includes('private-value'), false);
   env.SUPABASE_ANON_KEY = 'sb_secret_private';

@@ -11,6 +11,9 @@ Vercel Function인 `api/config.js`가 함께 배포되어야 합니다.
 
 Vercel에 연결된 Supabase 환경 변수 중 다음 조합을 자동으로 읽습니다.
 
+환경 변수가 모두 없으면 소유자가 제공한 Supabase 프로젝트 주소와 publishable 공개 키를
+기본값으로 사용합니다. 다른 프로젝트로 변경할 때는 주소와 공개 키를 함께 설정하세요.
+
 - 주소: `NEXT_PUBLIC_SUPABASE_URL`, `SUPABASE_URL`, `VITE_SUPABASE_URL` 순서
 - 공개 키: `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_PUBLISHABLE_KEY`,
   `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_ANON_KEY`, `VITE_SUPABASE_ANON_KEY` 순서
