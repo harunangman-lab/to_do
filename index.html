@@ -35,6 +35,21 @@
     .empty { margin: 0; padding: 36px 12px; border: 2px dashed var(--line); border-radius: 20px; background: var(--card); color: var(--muted); text-align: center; font-size: 14px; line-height: 1.9; }
     .empty::before { content: "♡"; display: block; margin-bottom: 10px; color: var(--accent); font-size: 32px; line-height: 1; }
     .hint { margin: 26px 0 0; color: var(--muted); text-align: center; font-size: 12px; line-height: 1.7; }
+    .account-bar { display: flex; justify-content: flex-end; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 22px; font-size: 13px; }
+    #account-email { min-width: 0; overflow-wrap: anywhere; }
+    .account-button { padding: 10px 16px; border: 1px solid var(--line); border-radius: 14px; background: #FFF0F3; color: var(--text); }
+    dialog { width: min(420px, calc(100% - 32px)); max-height: calc(100dvh - 32px); overflow-y: auto; padding: 28px; border: 1px solid var(--line); border-radius: 24px; background: var(--card); color: var(--text); box-shadow: 0 20px 80px #4A3E3D26; }
+    dialog::backdrop { background: #4A3E3D66; }
+    .dialog-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+    .dialog-heading h2 { margin: 0; font-size: 22px; }
+    .close-dialog { border: 0; padding: 8px 12px; border-radius: 10px; background: #FFF0F3; color: var(--text); font-size: 22px; }
+    #auth-form { display: grid; gap: 10px; margin-top: 24px; }
+    #auth-form label { font-size: 14px; }
+    #auth-form input { width: 100%; padding: 13px; border: 1px solid var(--line); border-radius: 12px; background: #FFFAFB; color: var(--text); font: inherit; }
+    #auth-submit { min-height: 46px; margin-top: 8px; }
+    .auth-switch { width: 100%; border: 0; background: transparent; padding: 14px 0 0; color: #9B5263; font-size: 13px; text-decoration: underline; }
+    .auth-message { margin: 16px 0 0; font-size: 13px; line-height: 1.7; color: #9B5263; }
+    button:disabled { opacity: .6; cursor: wait; }
     .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
     [hidden] { display: none; }
     @media (max-width: 480px) { body { padding: 24px 14px; } main { padding: 26px 20px; } h1 { font-size: 27px; } .add { padding: 0 17px; } }
@@ -42,6 +57,11 @@
 </head>
 <body>
   <main>
+    <div class="account-bar" aria-live="polite">
+      <span id="account-email" hidden></span>
+      <button id="login-button" class="account-button" type="button">로그인</button>
+      <button id="logout-button" class="account-button" type="button" hidden>로그아웃</button>
+    </div>
     <header>
       <span class="flower" aria-hidden="true">✿</span>
       <p class="eyebrow">MY DAILY CHECKLIST</p>
@@ -58,6 +78,22 @@
     <p class="empty" id="empty">아직 등록된 할 일이 없어요.<br>첫 번째 할 일을 추가해 보세요.</p>
     <p class="hint" id="storage-hint">할 일은 이 브라우저에 자동으로 저장됩니다.</p>
   </main>
+  <dialog id="auth-dialog" aria-labelledby="auth-title" aria-describedby="auth-message">
+    <div class="dialog-heading">
+      <h2 id="auth-title">로그인</h2>
+      <button class="close-dialog" id="auth-close" type="button" aria-label="닫기">×</button>
+    </div>
+    <form id="auth-form">
+      <label for="auth-email">이메일</label>
+      <input id="auth-email" type="email" autocomplete="email" placeholder="hello@example.com" required autofocus>
+      <label for="auth-password">비밀번호</label>
+      <input id="auth-password" type="password" autocomplete="current-password" required>
+      <button class="add" id="auth-submit" type="submit">로그인</button>
+    </form>
+    <p class="auth-message" id="auth-message" role="status" aria-live="polite"></p>
+    <button class="auth-switch" id="auth-switch" type="button">처음이신가요? 회원가입</button>
+  </dialog>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script>
     const storageKey = 'daily-checklist-v1';
     const form = document.querySelector('#task-form');
@@ -140,6 +176,124 @@
       input.focus();
     });
     render();
+  </script>
+  <script>
+    const authDialog = document.querySelector('#auth-dialog');
+    const authForm = document.querySelector('#auth-form');
+    const authEmail = document.querySelector('#auth-email');
+    const authPassword = document.querySelector('#auth-password');
+    const authSubmit = document.querySelector('#auth-submit');
+    const authSwitch = document.querySelector('#auth-switch');
+    const authMessage = document.querySelector('#auth-message');
+    const loginButton = document.querySelector('#login-button');
+    const logoutButton = document.querySelector('#logout-button');
+    const accountEmail = document.querySelector('#account-email');
+    let authClient;
+    let authMode = 'login';
+    let authBusy = false;
+
+    function showAccount(session) {
+      const user = session?.user;
+      accountEmail.textContent = user?.email || '';
+      accountEmail.hidden = !user;
+      loginButton.hidden = !!user;
+      logoutButton.hidden = !user;
+      if (user && authDialog.open) authDialog.close();
+    }
+
+    function setAuthMode(mode) {
+      authMode = mode;
+      const signup = mode === 'signup';
+      document.querySelector('#auth-title').textContent = signup ? '회원가입' : '로그인';
+      authSubmit.textContent = signup ? '회원가입' : '로그인';
+      authSwitch.textContent = signup ? '이미 계정이 있나요? 로그인' : '처음이신가요? 회원가입';
+      authPassword.autocomplete = signup ? 'new-password' : 'current-password';
+      if (signup) authPassword.minLength = 6;
+      else authPassword.removeAttribute('minlength');
+      authPassword.value = '';
+      authMessage.textContent = '';
+    }
+
+    function setAuthBusy(busy) {
+      authBusy = busy;
+      for (const control of [authEmail, authPassword, authSubmit, authSwitch]) control.disabled = busy;
+      authForm.setAttribute('aria-busy', String(busy));
+    }
+
+    function authErrorMessage(error) {
+      const messages = {
+        invalid_credentials: '이메일 또는 비밀번호를 확인해 주세요.',
+        email_not_confirmed: '받은 편지함에서 이메일 인증을 완료한 후 로그인해 주세요.',
+        user_already_exists: '이미 가입된 이메일입니다. 로그인해 주세요.',
+        weak_password: '더 강한 비밀번호를 사용해 주세요.',
+        over_email_send_rate_limit: '이메일 요청이 많습니다. 잠시 후 다시 시도해 주세요.',
+        over_request_rate_limit: '요청이 많습니다. 잠시 후 다시 시도해 주세요.',
+        signup_disabled: '현재 회원가입이 일시 중지되어 있습니다.'
+      };
+      return messages[error?.code] || '요청을 처리하지 못했습니다. 입력 내용과 인터넷 연결을 확인해 주세요.';
+    }
+
+    async function initializeAuth() {
+      if (location.protocol === 'file:') throw new Error('Vercel에 배포된 주소에서 로그인해 주세요.');
+      const response = await fetch('/api/config', { cache: 'no-store' });
+      if (!response.ok) throw new Error('로그인 설정을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.');
+      const config = await response.json();
+      if (!config.supabaseUrl || !config.supabaseKey || !window.supabase?.createClient) {
+        throw new Error('로그인을 준비하지 못했습니다. 잠시 후 다시 시도해 주세요.');
+      }
+      const client = window.supabase.createClient(config.supabaseUrl, config.supabaseKey);
+      client.auth.onAuthStateChange((_event, session) => showAccount(session));
+      const { data, error } = await client.auth.getSession();
+      if (error) throw error;
+      showAccount(data.session);
+      authClient = client;
+      return client;
+    }
+
+    // Resolve initialization errors to keep the todo app usable when auth is unavailable.
+    const authReady = initializeAuth().then(() => null).catch(error => error);
+    loginButton.addEventListener('click', () => {
+      setAuthMode('login');
+      authDialog.showModal();
+    });
+    document.querySelector('#auth-close').addEventListener('click', () => authDialog.close());
+    authDialog.addEventListener('close', () => { authPassword.value = ''; });
+    authSwitch.addEventListener('click', () => setAuthMode(authMode === 'login' ? 'signup' : 'login'));
+
+    authForm.addEventListener('submit', async event => {
+      event.preventDefault();
+      if (authBusy) return;
+      const email = authEmail.value.trim();
+      const password = authPassword.value;
+      const mode = authMode;
+      setAuthBusy(true);
+      authMessage.textContent = '잠시만 기다려 주세요…';
+      try {
+        const initError = await authReady;
+        if (initError) { authMessage.textContent = initError.message; return; }
+        const result = mode === 'signup'
+          ? await authClient.auth.signUp({ email, password, options: { emailRedirectTo: location.origin + '/' } })
+          : await authClient.auth.signInWithPassword({ email, password });
+        if (result.error) { authMessage.textContent = authErrorMessage(result.error); return; }
+        if (result.data.session) {
+          showAccount(result.data.session);
+        } else if (mode === 'signup') {
+          setAuthMode('login');
+          authMessage.textContent = '인증 메일을 확인해 주세요. 이메일 인증 후 로그인할 수 있습니다.';
+        }
+      } catch { authMessage.textContent = '서버에 연결하지 못했습니다. 잠시 후 다시 시도해 주세요.'; }
+      finally { setAuthBusy(false); authPassword.value = ''; }
+    });
+
+    logoutButton.addEventListener('click', async () => {
+      logoutButton.disabled = true;
+      try {
+        const { error } = await authClient.auth.signOut();
+        if (error) throw error;
+        showAccount(null);
+      } catch { alert('로그아웃하지 못했습니다. 잠시 후 다시 시도해 주세요.'); }
+      finally { logoutButton.disabled = false; }
+    });
   </script>
 </body>
 </html>
